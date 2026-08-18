@@ -37,7 +37,7 @@ description: Expert guide for using nodul-mcp MCP tools effectively. Use when se
 
 **Create scenario flow**:
 1. Identify the specific applications and services you’ll need to implement the scenario.
-2. Use the “search_node_types” tool to retrieve the aliases of nodes that fit the scenario’s flow. In the “query” parameter, provide a list of all the applications from step 1, using only one keyword for each.
+2. Use the “search_node_types” tool to retrieve the aliases of nodes that fit the scenario’s flow. For each application, call the tool and pass the application name as the "query" parameter; the response will return a list of potentially suitable applications. Select the one you need from the list and call the tool again, specifying the selected application in the "app" parameter (in this case, it is not necessary to specify a query; all nodeTypes for that application will be returned). For built-in nodes (webhook, http_request), use "app" = "Core".
 3. If there are no suitable nodes for certain applications or services, use the “webhook” node for triggers and the “http_request” node for actions.
 4. Start building the graph structure with a trigger.
 5. When building the scenario, fill in the node parameters immediately. Specify optional parameters only if it is truly necessary.
@@ -194,6 +194,14 @@ When a request is sent to the node's URL, the scenario starts executing.
 - **URL is unique and secret.** The webhook URL acts as both address and authentication. Don't expose it publicly without additional validation.
 - **One request = one execution.** Each HTTP request triggers one scenario run. Batch multiple items in a single request if you want to process them together (then use an Iterator to split).
 - **Webhook queue.** If the scenario is busy, incoming webhook requests queue. They're processed in order when the scenario becomes available.
+
+## How to use the `run_action_node_once` tool
+1. Determine whether this is a core node (set_variables, js_code) or an action node for a specific service (like Gmail, LinkedIn, etc.).
+2. If you need to run a core node, specify the required parameters and then call the `run_action_node_once` tool.
+3. If you need to execute an action node for a specific service, call the 'search_connections' tool first, provided that the node's parameters include an 'access_token' field. For more details, see the '[Connections](./connections.md)' skill.
+4. Next, call the 'get_dynamic_node_parameters' tool, passing the 'access_token' from the previous step. Keep calling this tool until there are no more non-dynamic parameters left. For more details, see '[Dynamic Parameters](./dynamic_params.md)' skill.
+5. If you encounter problems retrieving the parameters for a particular node after setting the ‘access_token’, try using other suitable connections in descending order of the ‘created_at’ field values until you find one that works. If none of the connections work, ask the user to create a new connection (by calling the `create_connection` tool).
+6. As a final step, call the `run_action_node_once` tool. If a large number of data rows are expected in the response, it is recommended to pass the `compactOutput` flag; when enabled, all arrays in the JSON response will be truncated to the first five elements.
 
 ## Core Concepts Reference
 
