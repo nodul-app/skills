@@ -1,124 +1,91 @@
 ---
-name: Dynamic-params
-description: Load before calling get_dynamic_node_parameters tool or if node type has parameter marked as "dynamic".
+name: dynamic_params
+description: Load before calling get_dynamic_node_parameters or when a node parameter is dynamic.
 ---
 
-## Algorithm how to load dynamic parameters
-1. Identify which connection types (aliases) are suitable for the node (usually for the `access_token` param).
-2. Call the `search_connections` tool by providing those aliases.
-3. Choose one connection from the result. Prefer the newest connection.
-4. Call the `get_dynamic_node_parameters` tool by providing the connection id.
-5. Tool returns new parameters for the node type. If the new parameters are marked as `dynamic`, 
-call the `get_dynamic_node_parameters` tool again, including new parameters to the input (pass values with it).
-6. Repeat step 5 until no more dynamic parameters are found.
+# Dynamic Parameters
 
-## Example usage
-1. Node type `__pd_google_sheets_get_values` has parameter `access_token` with type `connection` and field `"dynamic": true`.
-    ```json
-    {
-      "nodeTypes": [
-        {
-          "alias": "__pd_google_sheets_get_values",
-          "name": "Google sheets/Actions/Get Values",
-          "description": "Get all values from a sheet.",
-          "params": [
-            {
-              "key": "access_token",
-              "title": "Connection",
-              "type": "connection",
-              "required": true,
-              "options": [
-                "google_sheets"
-              ],
-              "dynamic": true
-            }
-          ]
-        }
-      ]
-    }
-    ```
-2. Calling the "search_connections" tool with the argument `"alias": ["google_sheets"]`. The response below:
-    ```json
-    {
-      "connections": [
-        {
-          "id": "6a1024178cd196d0141573b5",
-          "title": "sheets",
-          "typeAlias": "google_sheets",
-          "lastModifiedAt": "2026-06-06T20:01:48.311Z"
-        }
-      ]
-    }
-    ```
-3. There is only one connection to choose – `6a1024178cd196d0141573b5`.
-4. Call the `get_dynamic_node_parameters` tool by providing the connection id `6a1024178cd196d0141573b5`.
-   #### Request:
-   ```json
-   {
-     "nodeTypeAlias": "__pd_google_sheets_get_values",
-     "currentParameters": {
-       "access_token": "6a1024178cd196d0141573b5"
-     }
-   }
-   ```
-   #### Response:
-   ```json
-   {
-     "parameters": [
-       {
-         "key": "drive",
-         "title": "Drive",
-         "type": "select",
-         "required": false,
-         "description": "Defaults to `My Drive`. To select a [Shared Drive](https://support.google.com/a/users/answer/9310351) instead, select it from this list.",
-         "options": {
-           "My Drive": "My Drive"
-         },
-         "dynamic": true
-       },
-       {
-         "key": "sheetId",
-         "title": "Spreadsheet",
-         "type": "select",
-         "required": true,
-         "description": "The Spreadsheet ID",
-         "options": {
-           "1YjtKgsUAxuTFhRmNxFHr9_U8qDWIa3v2KSj0lC5WPuw": "Orders",
-           "1s5FWnp6CtR6lfBkrfmgCAZE2QgnltRwWA8XCZa_CJng": "Test"
-         },
-         "dynamic": true
-       }
-     ]
-   }
-   ```
-5. `drive` parameter is optional so ignore it. Then call the `get_dynamic_node_parameters` tool by providing the connection id `6a1024178cd196d0141573b5` and the new parameter `sheetId`.
-   #### Request:
-   ```json
-   {
-     "nodeTypeAlias": "__pd_google_sheets_get_values",
-     "currentParameters": {
-       "access_token": "6a1024178cd196d0141573b5",
-       "sheetId": "1YjtKgsUAxuTFhRmNxFHr9_U8qDWIa3v2KSj0lC5WPuw"
-     }
-   }
-   ```
-   #### Response:
-   ```json
-   {
-     "parameters": [
-       {
-         "key": "sheetName",
-         "title": "Sheet Name",
-         "type": "select",
-         "required": true,
-         "description": "Your sheet name",
-         "options": {
-           "Sheet1": "Sheet1"
-         },
-         "dynamic": true
-       }
-     ]
-   }
-   ```
-6. Call the `get_dynamic_node_parameters` tool until only the non-dynamic parameters remain
-   
+## Algorithm
+
+1. Read the node's `params` from `search_node_types`.
+2. If it has a connection parameter, call `search_connections` with `connectionTypeAlias`.
+3. Add the selected connection ID to `currentParameters`.
+4. Call `get_dynamic_node_parameters` with `nodeTypeAlias` and the **complete** `currentParameters`.
+5. Select required option keys, add them to the same object, and call again.
+6. Continue until no newly returned field requires another dynamic selection.
+
+Never send only the newest value; the server needs the full cascade context.
+
+For selects, use the option key, not its human-readable label. Never invent an option.
+
+## Google Sheets cascade
+
+Node:
+
+`__pd_google_workspace_drive_actions_sheets_v4_values_get_cells_all`
+
+Step 1:
+
+```json
+{
+  "nodeTypeAlias": "__pd_google_workspace_drive_actions_sheets_v4_values_get_cells_all",
+  "currentParameters": {
+    "access_token": "<connectionId>"
+  }
+}
+```
+
+Returned `drive_id`; `my_drive` was a valid option key.
+
+Step 2:
+
+```json
+{
+  "nodeTypeAlias": "__pd_google_workspace_drive_actions_sheets_v4_values_get_cells_all",
+  "currentParameters": {
+    "access_token": "<connectionId>",
+    "drive_id": "my_drive"
+  }
+}
+```
+
+Returned `drive_item_id` with spreadsheet IDs as option keys.
+
+Step 3:
+
+```json
+{
+  "nodeTypeAlias": "__pd_google_workspace_drive_actions_sheets_v4_values_get_cells_all",
+  "currentParameters": {
+    "access_token": "<connectionId>",
+    "drive_id": "my_drive",
+    "drive_item_id": "<spreadsheetId>"
+  }
+}
+```
+
+Returned `worksheet_name`.
+
+Step 4:
+
+```json
+{
+  "nodeTypeAlias": "__pd_google_workspace_drive_actions_sheets_v4_values_get_cells_all",
+  "currentParameters": {
+    "access_token": "<connectionId>",
+    "drive_id": "my_drive",
+    "drive_item_id": "<spreadsheetId>",
+    "worksheet_name": "Sheet1"
+  }
+}
+```
+
+Returned the optional static `range_a1_notation` field.
+
+The same completed parameters successfully ran through `run_action_node_once` and read `Sheet1!A1:B5`.
+
+## Validation behavior
+
+- Missing required earlier fields returns a validation error instead of the next cascade fields.
+- Some core nodes such as `http_request` do not have dynamic system metadata even if a select parameter is marked dynamic. Use this tool for node types that actually expose a dynamic cascade.
+- A stale or unauthenticated connection may fail while loading options; try another valid saved connection or reauthenticate it.

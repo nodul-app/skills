@@ -25,7 +25,7 @@ Control the runtime with the `use_bun` parameter:
 - Server creation (`Bun.serve`) and listening on ports are not supported.
   Neither runtime supports TypeScript/JSX syntax — write plain JavaScript only (no type annotations, interfaces, or generics).
 #### Runtime facts & limits
-- **`run()` argument object.** The injected argument object exposes more than `data`: `{ execution_id, data, store, db }` (plus `page` only in headless-browser mode). You normally only need `data`; destructure the others when required. `data` contains **only your declared `@CustomParams`** — it is **not** auto-populated with the outputs of previous nodes. To read an upstream node's output, declare a `@CustomParam` and fill it with a `{{$X.result...}}` template; never access upstream data directly off `data`.
+- **`run()` argument object.** The injected argument object exposes `{ execution_id, data, store, db }`. You normally only need `data`; destructure the others when required. `data` is **not** automatically populated with every previous node output. Declared `@CustomParams` are available by key (strings, numbers, connections — **never a file**). An upstream **file** is only available via a hardcoded accessor in the source, for example `data["{{$3.result.fileInfo.content}}"]`. There is no CustomParams type that can take file content.
 - **Variables via `store`** (all calls are `async`; values become available to other nodes after the JS node runs once):
 - Scenario-local (string values only, scoped to the current scenario):
 ```javascript
@@ -50,7 +50,7 @@ return {
     };
 }
 ```
-This shape is required: the function must be `export default async`, named `run`, destructure `data` (the field you normally need), and return an object. Only `execution_id`, `store`, `db` (and `page` in headless mode) may be additionally destructured when needed. `run({ data })` is the canonical form.
+This shape is required: the function must be `export default async`, named `run`, destructure `data` (the field you normally need), and return an object. `execution_id`, `store`, and `db` may be additionally destructured when needed. `run({ data })` is the canonical form.
 Use `axios` for all HTTP requests.
 **Critical requirements**:
 - ALWAYS return an object (even if empty: `{}`).
@@ -127,47 +127,89 @@ files: files(['a.txt', 'b.txt'])   // TOO DEEP
     }
 };
 ```
-#### Reading Files from Previous Nodes
-**IMPORTANT**: File paths from previous nodes MUST be declared as Custom Parameters, never hardcoded in code.
-**3-step workflow**:
-1. **Declare Custom Parameter** (type: `string`):
+#### Reading Files from Previous Nodes (STRICT)
+
+**There is no CustomParams type for file content.** Putting `{{$3.result.fileInfo.content}}` (or any `...content` path) into a custom parameter **breaks** the node. Custom params may be `string`, `int`, `connection`, etc. They cannot receive a file and pass it into `data`.
+
+The file accessor **must be hardcoded in the source**, in this format (middle segments follow the real upstream output; the leaf is always `content`):
+
+```javascript
+const webpContent = data["{{$3.result.fileInfo.content}}"];
+```
+
+Equivalent numbered access with backticks:
+
+```javascript
+const webpContent = data["{{3.`result`.`fileInfo`.`content`}}"];
+```
+
+Then decode bytes with **`latin1`** (any other encoding corrupts the file):
+
+```javascript
+if (!webpContent) {
+  throw new Error("File content not found.");
+}
+const imageBuffer = Buffer.from(webpContent, "latin1");
+```
+
+When a **JavaScript** node returns `file: file("name.csv")`, the next JS node reads it as **`data["{{$2.file.content}}"]`** (node 2 = the JS that returned the file). There is no `result` wrapper. The official CSV docs example `{{2.result.file.content}}` is for nodes whose output is nested under `result` — a JS `file()` return is top-level `file.content`.
+
+`@CustomParams` stays valid for email body, recipient, Gmail connection, API keys — not for the file.
+
+**Forbidden**
+
 ```javascript
 /** @CustomParams
-{
-    "input_file_path": {
-        "type": "string",
-        "title": "Input File",
-        "required": true,
-        "description": "Path to the file to process"
-    }
-}
+{ "image_file": { "type": "string", "title": "Image file" } }
 */
+// then data.image_file = "{{$3.result.fileInfo.content}}"  — this will break
 ```
-2. **Code reads from path**:
+
+**Mandatory sequence when you also need to return a new file to downstream nodes:** read via `data["{{$N....content}}"]` → bytes (`Buffer.from(..., "latin1")` **or** `fs.readFileSync` if the accessor is a temp path) → modify → `fs.writeFileSync` → return `file(...)` / `files(...)` at the first level only.
+
+Official Handling Files example (temp path + CSV transform + `file()`). Same rule: accessor hardcoded in source, never a custom parameter:
+
 ```javascript
-import fs from "fs";
+import fs from 'fs';
+
 export default async function run({ data }) {
-// Correct - read from Custom Parameter
-const filePath = data.input_file_path;
-const buffer = fs.readFileSync(filePath);
-const content = buffer.toString('utf-8');
-return {
-content: content,
-size: buffer.length
-    };
+  // 1) Get the temporary file path from Node 2 output
+  const contentFilePath = data["{{2.result.file.content}}"];
+
+  if (!contentFilePath) {
+    throw new Error(
+      'File path not found. Check that Node 2 outputs result.file.content and insert it via the helper widget.'
+    );
+  }
+
+  // 2) Read file as a Buffer
+  const contentFileBuffer = fs.readFileSync(contentFilePath);
+
+  // 3) Modify (example: add ',"Processed"' column to each CSV row)
+  const csvContent = contentFileBuffer.toString('utf8');
+  const rows = csvContent.split('\n');
+
+  const header = rows[0] ?? '';
+  const processedRows = [header];
+
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.trim() === '') continue;
+    processedRows.push(`${row.trim()},"Processed"`);
+  }
+
+  const processedCsvString = processedRows.join('\n');
+  const processedFileBuffer = Buffer.from(processedCsvString, 'utf8');
+
+  // 4) Write and return as a file output
+  const newFileName = 'processed_data.csv';
+  fs.writeFileSync(newFileName, processedFileBuffer);
+
+  return {
+    file: file(newFileName),
+    fileType: 'text/csv',
+  };
 }
-```
-3. **Fill parameter** with the file path from a previous node using `{{$X.result.file.content}}`.
-   **Why this approach**:
-- Clear separation: configuration vs. logic.
-- User can easily change the source without editing code.
-- Can use data from any previous node or variable.
-- Consistent with all other external data handling.
-```javascript
-// WRONG - never use templates directly in code
-const path = data["{{$nodeName.result.file.content}}"];  // FORBIDDEN
-// CORRECT - use Custom Parameter
-const path = data.input_file_path;
 ```
 #### Custom Parameter Types Reference
 The JS code node supports custom parameters for dependency injection into your code.
@@ -190,12 +232,12 @@ For example:
 */
 ```
 In this example, the custom parameters are accessed via `data.api_key` and `data.endpoint` in your code.
-To receive a file, declare a string parameter (e.g. named `file_path`), pass the file via a custom expression, and use the value as the path to the file in your code.
-Important: `@CustomParams` must be placed at the very beginning of the code (even before import statements).
+Do **not** declare a custom parameter for a file. There is no CustomParams type that can accept file content. Hardcode `data["{{$3.result.fileInfo.content}}"]` (or that node's real `...content` path) in the source.
+Important: `@CustomParams` is usually at the top of the code. A live Gmail+attachment example used `import` first, then `@CustomParams`, then the rest, and ran successfully.
 ##### JS code writing strategy
 - First, write the JS code and describe your custom parameters schema inside your code.
-- Then use the `set_node_params` tool to set the code parameter values.
-- Receive the new parameters schema and values via the `get_workflow_node_state` tool.
+- Then set the code parameter's value directly in the node's `parameters` object via `create_scenario` (new scenario) or `update_scenario` (existing scenario).
+- Confirm the parameter's exact key and current schema via the `params` array returned by `search_node_types` for this node's alias.
 - Fill custom parameter values as usual parameter values.
   Remember: when you change the `@CustomParams` schema you will be provided with a new parameters schema and values based on the new schema.
 ##### CONNECTION
@@ -326,7 +368,7 @@ message: error.response?.data || error.message
     }
 }
 ```
-Build it using the JS code writing strategy above (write code with its `@CustomParams` schema → `set_node_params` → read the recalculated schema/values via `get_workflow_node_state`).
+Build it using the JS code writing strategy above (write code with its `@CustomParams` schema → set it in the node's `parameters` via `create_scenario`/`update_scenario` → confirm the schema via `search_node_types`).
 #### Errors & debugging
 - Use `console.log` for debugging — output appears in the node's Log tab. Never log secrets.
 - For control flow: `throw` on unrecoverable errors, or return a structured error object (`{ status: "error", message }`) when the workflow should continue and inspect the error downstream.
@@ -336,7 +378,7 @@ Build it using the JS code writing strategy above (write code with its `@CustomP
 - Always `export default async function run(...)` and always return an object (`{}` if nothing to return); never return primitives.
 - Use `import`, never `require`; use `axios`, never `fetch`.
 - Pin npm versions with `@` for reproducibility; rely on auto-install (never tell the user to install).
-- Externalize all user/config values (API keys, ids, paths) via `@CustomParams`; never hardcode templates in code.
+- Externalize user-controlled **non-file** configuration (API keys, emails, IDs) via `@CustomParams`. An upstream file is **only** `data["{{$3.result.fileInfo.content}}"]` (or that node's real `...content` path) hardcoded in the source — never a custom parameter. Decode with `Buffer.from(..., "latin1")`.
 - Wrap I/O (HTTP, file, storage) in try/catch; return structured errors (`{ status: "error", message }`) or `throw` for unrecoverable cases.
 - Keep within the 2-minute limit; use `Promise.all` for independent requests; split heavy work across multiple JS nodes.
 - Use `console.log` for debugging (Log tab); never log secrets.
