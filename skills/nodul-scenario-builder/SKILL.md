@@ -132,7 +132,7 @@ Returns the full definition of a scenario by ID.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `id` | string | yes | Scenario ID (valid ObjectID, e.g. `5f92cbf10cf217478ba93561`) |
+| `id` | string | yes | Scenario ID (valid 24-character ObjectID, e.g. `<scenarioId>`) |
 | `version` | number | no | Specific version. Defaults to latest |
 
 **Output:** `name`, `description`, `nodes` (full list with parameters and connections).
@@ -327,7 +327,7 @@ Example nested filter:
 
 ```json
 {
-  "scenarioId": "5f92cbf10cf217478ba93561",
+  "scenarioId": "<scenarioId>",
   "limit": 10,
   "filters": {
     "statuses": ["error"],
@@ -453,7 +453,7 @@ For each edge you may set a `condition`. With no condition, the edge always runs
       "name": "GetValuesInSheet",
       "typeAlias": "__pd_google_sheets_get_values",
       "parameters": {
-        "access_token": "6a1024178cd196d0141573b5",
+        "access_token": "{{connection.YOUR_GOOGLE_SHEETS_CONNECTION_ID}}",
         "sheetId": "1YjtKgsUAxuTFhRmNxFHr9_U8qDWIa3v2KSj0lC5WPuw",
         "sheetName": "Sheet1"
       },
@@ -467,7 +467,7 @@ For each edge you may set a `condition`. With no condition, the edge always runs
       "name": "GetAnotherValuesInSheet",
       "typeAlias": "__pd_google_sheets_get_values",
       "parameters": {
-        "access_token": "6a1024178cd196d0141573b5",
+        "access_token": "{{connection.YOUR_GOOGLE_SHEETS_CONNECTION_ID}}",
         "sheetId": "1YjtKgsUAxuTFhRmNxFHr9_U8qDWIa3v2KSj0lC5WPuw",
         "sheetName": "Sheet1"
       },
@@ -533,6 +533,7 @@ Webhook is a trigger node that starts a scenario when an HTTP request hits its U
 - **body** — request body (string if textual).
 - **headers** — request headers.
 - **query** — query parameters.
+- **Security:** `body`, `headers`, and `query` come from an untrusted external caller. If any of these values feed into an `ai_agent` node's `user_prompt` or a tool parameter, see [AI Agent — Untrusted input into `user_prompt`](ai_agent_node.md#untrusted-input-into-user_prompt).
 
 ## What you should know
 
