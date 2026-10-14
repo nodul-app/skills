@@ -19,13 +19,11 @@ For a binary file, never pass a parent object (`file`, `fileInfo`, `files`, `out
 
 **Most of the time the path ends with `content`.** That is the value for attachment/upload fields.
 
-Use the upstream node's **canvas number**, not its `name` and **not** its position in `get_scenario` `nodes[]`. After a delete, a JS `file()` node may be `$7` even if it is listed second. If you remove a producer, rewrite every downstream `...content` path (Gmail `attachments`, JS `data["{{$N...}}"]`).
+Use `$` + the upstream node's **name** as `get_scenario` returns it (for example `{{$image_0.result.fileInfo.content}}`), or a canvas number (`{{$7.file.content}}`). Do not guess from `nodes[]` order. If you remove a producer, rewrite every downstream `...content` path (Gmail `attachments`, JS `data["{{$...}}"]`) to the live producer.
 
 ```text
-{{$7.file.content}}
+{{$image_0.result.fileInfo.content}}
 ```
-
-`get_scenario` may **display** `$3` as a node name (for example `$image_0.result.fileInfo.content`). That display is **not** valid to write back. Always send `{{$N....content}}` (digits after `$`).
 
 Do **not** write `{{$image_0.result.fileInfo}}` or `{{$3.result.fileInfo}}`. Those stop on a container. The engine does not treat that as a file.
 
@@ -105,7 +103,7 @@ Use `.content` / `.extension` / `.filename` on whatever object actually contains
    - In the body, use the **content** path, e.g. `{{$3.body.file.content}}`.
 
 2. **Uploading or attaching a file** (Gmail, Drive, HTTP file fields, etc.):
-   - Value = `{{$N....content}}` (path ends with `content`).
+   - Value = `{{$image_0....content}}` or `{{$7....content}}` (path ends with `content`).
    - If the target also needs a name, put `filename` in the filename/key field, not in the content value.
 
 3. **Passing files between nodes**:
@@ -132,7 +130,7 @@ AI Agents cannot work with binary data. You cannot pass files between tools, and
 
 #### Reading an upstream file inside the JavaScript node (official pattern)
 
-**Only** a hardcoded `data["{{$N....content}}"]` in the source. Never a custom parameter.
+**Only** a hardcoded `data["{{$image_0....content}}"]` (or `data["{{$7....content}}"]`) in the source. Never a custom parameter.
 
 1. **Read bytes** — accessor must end with `content`. Decode with `latin1` or the file is corrupted:
 
@@ -258,12 +256,12 @@ export default async function run({ data }) {
   }
   const imageBuffer = Buffer.from(webpContent, "latin1");
 
-  const boundary = "nodul_mime_boundary";
+  const boundary = "latenode_mime_boundary";
   const imageB64 = wrapBase64(imageBuffer.toString("base64"));
 
   const mime = [
     `To: ${recipient}`,
-    `Subject: Nodul file attachment`,
+    `Subject: Latenode file attachment`,
     "MIME-Version: 1.0",
     `Content-Type: multipart/mixed; boundary="${boundary}"`,
     "",

@@ -10,14 +10,14 @@ Choose the right mode before calling tools:
 | User intent | Approach |
 |---|---|
 | One-off action, result in chat, **no** scenario on the canvas | **[Run a single action](run_action_node_once.md)** → `run_action_node_once` |
-| Build / edit / test / activate an automation graph | Scenario tools below (`create_scenario`, `update_scenario`, …) |
+| Build / edit / test / activate an automation graph | Scenario tools below (`create_scenario`, `patch_scenario`, `update_scenario`, `release_scenario`, …) |
 | Test one node **inside** an existing scenario | `run_node_once` |
 
 ---
 
 # MCP Tools Reference
 
-Schemas below match the live MCP `tools/list` response. The live server exposes **14 tools**; the public documentation may lag behind. Use exact snake_case names.
+Schemas below match the live MCP `tools/list` response. The live server exposes **16 tools**; the public documentation may lag behind. Use exact snake_case names.
 
 ## Scenarios
 
@@ -52,7 +52,7 @@ Example: `[Weekly lead digest](https://app.nodul.ru/scenarios/<scenarioId>)`
 
 Send this link **twice**:
 1. Right after a successful `create_scenario`.
-2. Again when setup is finished (last `update_scenario` / successful test), so the user can open the completed canvas.
+2. Again when setup is finished (last `patch_scenario` / `update_scenario` / successful test), so the user can open the completed canvas.
 
 Do not paste a bare URL as the only form. Do not use generic labels like "open scenario" — use the real name.
 
@@ -73,7 +73,7 @@ Do not paste a bare URL as the only form. Do not use generic labels like "open s
 7. Call `create_scenario`. On success you get `scenarioId`. **In the same chat turn**, send `[<name>](https://app.nodul.ru/scenarios/<scenarioId>)` (name is the link text). Send the same hyperlink again when configuration is fully done.
 8. Test with `run_scenario_once`. For webhook triggers use `async: true`, then HTTP-request the webhook URL.
 9. If `result` is not `success`, follow **Testing, debugging and troubleshooting**.
-10. When the graph is done, add **one overview sticker** on this same scenario (last `create_scenario` if you already know the full graph, otherwise last `update_scenario`). Read **[Stickers](stickers.md)** for the text blocks. Do not rewrite the rest of the graph.
+10. When the graph is done, add **one overview sticker** on this same scenario (`addNode` via `patch_scenario` if the graph already exists; otherwise last `create_scenario`). Read **[Stickers](stickers.md)** for the text blocks. Do not rewrite the rest of the graph.
 
 **Example**
 
@@ -119,10 +119,62 @@ Replaces an existing scenario by ID. The current node list is discarded and repl
 
 **Notes**
 
-- Full replacement. For partial edits: `get_scenario` → modify → `update_scenario`.
+- Full replacement. **Do not use this for a small edit.** For partial edits use `patch_scenario` (below). `update_scenario` only when you intentionally replace the whole graph.
 - Display names are assigned the same way as in `create_scenario`.
-- **Node numbers are stable IDs, not JSON array indexes.** Deleting or replacing a node does **not** renumber the rest (`$3` stays `$3` until that node is gone). A newly added node gets a **new** number (e.g. `$7`), even if it sits second on the canvas. Never rewrite `{{$N...}}` from the order of `nodes[]` in `get_scenario`.
-- **Dangling templates after a delete (mandatory).** If you remove a node (or omit it from `update_scenario`), search **every remaining node** — parameters, Gmail `body` / `attachments`, HTTP fields, JS source `data["{{...}}"]`, conditions — for `$N` of the removed node. Rewrite each hit to the live producer. Leaving `{{$3.result.choices.[0].message.content}}` after node 3 is gone is a bug.
+- **Dangling templates after a delete (mandatory).** If you remove a node (via `removeNode` or by omitting it from `update_scenario`), search **every remaining node** — parameters, Gmail `body` / `attachments`, HTTP fields, JS source `data["{{...}}"]`, conditions — for templates that pointed at it. Rewrite each hit to the live producer using that node's **name** (as `get_scenario` shows). Do not guess from `nodes[]` order.
+
+### `patch_scenario`
+
+Applies an ordered batch of targeted partial updates. **Prefer this** whenever you change some nodes, parameters, or edges and the rest of the graph must stay.
+
+**Input**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `scenarioId` | string | yes | Scenario to patch |
+| `version` | string | no | Scenario version. Defaults to latest |
+| `operations` | array | yes | Ordered ops, max 100. Each object has **exactly one** of the keys below |
+
+**Operations** (one key per item)
+
+| Key | Required fields | What it does |
+|---|---|---|
+| `updateNodeParameters` | `nodeName`, `parameters` | Replace **only** the listed parameter keys on that node |
+| `replaceNode` | `name`, `typeAlias`, `parameters` | Replace the node by `name` (optional `prevNodes`) |
+| `replaceNodePrevNodes` | `nodeName` | Replace that node's `prevNodes` map (optional `prevNodes`, default `{}`) |
+| `connectNodes` | `nodeNameSrc`, `nodeNameDest` | Add an edge into dest `prevNodes` (`options.condition` / `options.fallback`) |
+| `addNode` | `name`, `typeAlias`, `parameters` | Add a node (optional `prevNodes`) |
+| `removeNode` | `nodeName` | Delete a node |
+| `renameNode` | `oldNodeName`, `newNodeName` | Rename a node |
+
+**Output:** `newVersion` (string), `removedNodeReferences` (object).
+
+**Notes**
+
+- Ops apply in array order.
+- `prevNodes` keys are node **names**. In templates (`parameters`, `condition`) write `$` + node **name** + path, as `get_scenario` returns it (`{{$VarsA.plain_text}}`). Canvas numbers (`{{$2.plain_text}}`) also work. Leave `_` and `%` unchanged.
+- After `removeNode`, rewrite remaining templates that pointed at the removed node to the live producer (use that node's name).
+- Stickers: `addNode` / `updateNodeParameters` / `removeNode`. Do not resend the whole graph to add a note.
+
+**Example** — change variables on one node without touching routes:
+
+```json
+{
+  "scenarioId": "<scenarioId>",
+  "operations": [
+    {
+      "updateNodeParameters": {
+        "nodeName": "Vars",
+        "parameters": {
+          "variables": {
+            "from_body": "{{ ifEmpty($WebhookTrigger.`body`.`name`; \"anon\") }}"
+          }
+        }
+      }
+    }
+  ]
+}
+```
 
 ### `get_scenario`
 
@@ -136,6 +188,11 @@ Returns the full definition of a scenario by ID.
 | `version` | number | no | Specific version. Defaults to latest |
 
 **Output:** `name`, `description`, `nodes` (full list with parameters and connections).
+
+**Notes**
+
+- Node templates in this response use `$` + node **name** (`{{$VarsA.plain_text}}`). Write that form in `create_scenario` / `patch_scenario` / `update_scenario`. `_` and `%` stay `_` and `%`.
+- `prevNodes` keys are names and are safe to reuse.
 
 ### `activate_scenario`
 
@@ -151,6 +208,24 @@ Activates or deactivates a scenario.
 **Output:** `status` — `activated` or `deactivated`.
 
 See **Activating the scenario** for when to call this and how to warn the user.
+
+### `release_scenario`
+
+Releases a scenario **version** to production. This is the deploy step, not the on/off switch.
+
+**Input**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `scenarioId` | string | yes | Scenario to release |
+| `version` | string | yes | Version to ship (e.g. `newVersion` from `patch_scenario`) |
+
+**Output:** `status` — `released`.
+
+**Notes**
+
+- Distinct from `activate_scenario`. `release_scenario` **deploys** a version; `activate_scenario` **turns** the production scenario **on or off**.
+- Schedule/cron and the webhook **prod** URL need both: release the version, then `activate_scenario` with `activate: true`. A green **dev** `run_scenario_once` does not put that graph on prod.
 
 ---
 
@@ -388,30 +463,29 @@ Example graph:
 }
 ```
 
-Syntax — **only these prefixes**. There is no `$nodeName` form.
+Syntax — **exactly three prefixes**. They are written differently; do not mix them.
 
-| Prefix | Meaning | Example |
-|---|---|---|
-| `$N` | Output of canvas node **number** N | `{{$1.data}}` |
-| `_` | Execution / scenario variables | `{{_.data}}` |
-| `%` | Global variables | `{{%.data}}` |
+| Prefix | Meaning | Write this | Not this |
+|---|---|---|---|
+| `$` + node | Output of a node | `{{$VarsA.plain_text}}`, `{{$WebhookTrigger.`body`.`name`}}`, `{{$2.plain_text}}` | `{{$_.data}}`, `{{$local...}}` |
+| `_` | Scenario / exec (local) variables | `{{_.data}}`, ``{{_.`field`}}`` | `{{$_.data}}` |
+| `%` | Global variables | `{{%.data}}`, ``{{%.`field`}}`` | `{{$%.data}}` |
 
-Rare exception: `{{1.data}}` without `$`. Never invent a fourth prefix.
+Rare exception: `{{1.data}}` without `$` (same as `$1`, node output only). Never invent a fourth prefix.
 
-**Forbidden:** `{{$iterator_0.value}}`, `{{$image_0.result.fileInfo.content}}`, `{{$email_text_0...}}`, `{{$WebhookTrigger.query...}}`. `$` is followed by a **digit**, not a node `name`. Names exist only in `prevNodes` / Iterator `parameters.nodes`.
+`get_scenario` returns node templates as `$` + **node name** (`{{$VarsA.plain_text}}`, `{{$iterator_0.value}}`). Write that form in `create_scenario` / `update_scenario` / `patch_scenario`. Canvas numbers (`{{$2.plain_text}}`) also work. Leave `_` and `%` as `_` and `%`.
 
-`get_scenario` sometimes **displays** `$iterator_0`. That is not legal runtime syntax. On every write (`create_scenario` / `update_scenario`) convert it back to `{{$N...}}`. Do **not** paste the name form back.
+`prevNodes` keys (and Iterator `parameters.nodes`) are node **names** without `$`.
 
-- **`$N` is the canvas number, not “Nth node in the payload”.** After deletes, the file node may be `$7` while `get_scenario` lists it second. Copy `$N` from the editor data picker or from a live run — do not count array index.
-- **After any node is deleted or replaced:** grep the rest of the graph for that `$N`. Native Gmail, JS accessors, and conditions keep stale paths unless you rewrite them.
+- **After any node is deleted or replaced:** search remaining nodes for templates that pointed at it. Rewrite each hit to the live producer using that node's **name** (as `get_scenario` shows). Do not guess from `nodes[]` order.
 - Node names are structural identifiers for `prevNodes` and special fields such as Iterator `parameters.nodes`.
-- **Binary files:** the template must end with `content`, `extension`, or `filename` (usually `content`). Typical: `{{$3.body.file.content}}`. Do not pass a parent object (`file`, `fileInfo`, …). `fileInfo` is only a middle segment on some nodes (e.g. Image Generation), not a global path. In a **JavaScript** node, never put file content in `@CustomParams` — hardcode `data["{{$3.result.fileInfo.content}}"]` (or that node's real `...content` path) in the source. See **[Working with Files](working_with_files.md)**.
+- **Binary files:** the template must end with `content`, `extension`, or `filename` (usually `content`). Typical: `{{$image_0.body.file.content}}`. Do not pass a parent object (`file`, `fileInfo`, …). `fileInfo` is only a middle segment on some nodes (e.g. Image Generation), not a global path. In a **JavaScript** node, never put file content in `@CustomParams` — hardcode `data["{{$image_0.result.fileInfo.content}}"]` (or that node's real `...content` path) in the source. See **[Working with Files](working_with_files.md)**.
 
 Example body:
 
 ```json
 {
-  "body": "{{$1.body.output_key}}"
+  "body": "{{$WebhookTrigger.body.output_key}}"
 }
 ```
 
@@ -557,7 +631,7 @@ Use `respond_to_webhook` only in a graph started by a `webhook` trigger.
 
 ## Retry and polling logic
 
-Every action node exposes two independent retry groups in its parameter schema (via `params` from `search_node_types`; set them like any other parameter through `create_scenario` / `update_scenario`):
+Every action node exposes two independent retry groups in its parameter schema (via `params` from `search_node_types`; set them like any other parameter through `create_scenario` / `patch_scenario` / `update_scenario`):
 
 - **Retry on error** (`__$$internal__retry_on_error`, `__$$internal__retry_on_error_numbers`, `__$$internal__retry_on_error_delay`, `__$$internal__retry_on_error_regexp`): re-runs on upstream API errors (5xx, timeout, 429, …). Default: 2 attempts, 3s delay, any error.
 - **Retry on wrong response / polling** (`__$$internal__retry_on_wrong_response`, `__$$internal__retry_on_wrong_response_numbers`, `__$$internal__retry_on_wrong_response_delay`, `__$$internal__retry_on_wrong_response_regexp`): re-runs when HTTP 200 arrives but the payload is not ready (e.g. `status: "queued"`). Regexp holds trigger words — while any match, the node restarts; when none match, it succeeds. Typical: 5–10 attempts, 20–30s delay, regexp `.*(queued|processing|in_progress).*`.
@@ -578,10 +652,9 @@ Before treating a scenario as done, review `nodes` / `prevNodes` (or re-fetch vi
 - One overview sticker is on this scenario, with the blocks from **[Stickers](stickers.md)** (title, short description, MCP callout, how it works, red box only if there are important notes).
 - A node that uses another node's data (or must run after it) lists that node in `prevNodes` (directly or transitively).
 - Branches/merges use only `prevNodes` + `condition` — never a fake IF/merge node.
-- No dangling `$N`: every `{{$N...}}` (and JS `data["{{$N...}}"]`) points at a node that still exists. If you deleted a node, you already rewrote downstream templates.
-- No `$nodeName` templates (`{{$iterator_0...}}`). Only `$` + digits, or `_` / `%`.
+- No dangling node refs: every `{{$...}}` (and JS `data["{{$...}}"]`) points at a node that still exists. If you deleted a node, you already rewrote downstream templates to the live producer.
 
-Most important after `update_scenario` (partial graph edits).
+Most important after `patch_scenario` / `update_scenario`.
 
 ---
 
@@ -600,28 +673,28 @@ If `result` / `status` is not `success`:
 1. Read the `error` field from the tool response first.
 2. Call `get_execution` with the `executionId` and suspect names in `nodeOutputsByName`.
 3. Common causes: empty/malformed required params; stale connection (re-check via `search_connections` or re-authorize); template path that does not exist on the **real** upstream output (verify with `run_node_once` and `compactOutput: false`); downstream expecting a different shape than upstream returned.
-4. Fix via `update_scenario`, then re-test with `run_node_once` or `run_scenario_once`.
+4. Fix via `patch_scenario` (or `update_scenario` only if the whole graph must be replaced), then re-test with `run_node_once` or `run_scenario_once`.
 5. For webhook/MCP triggers: a green **dev** test does not mean the **prod** URL is live — see activation below.
 
 ---
 
 ## Activating the scenario
 
-`activate_scenario` with `activate: true` publishes the current version to production; `activate: false` deactivates it.
+`release_scenario` deploys a **version** to production. `activate_scenario` with `activate: true` turns that production scenario **on**; `activate: false` turns it **off**. Activation alone does not pick an arbitrary canvas draft — release the version you tested, then activate.
 
-What activation does:
+What this pair does:
 
-- **App trigger** — platform listens for events and runs the scenario.
-- **Webhook / MCP trigger** — prod URL is served for the activated version.
-- **Schedule (cron)** — runs on the schedule from then on.
+- **App trigger** — after release + activate, the platform listens for events.
+- **Webhook / MCP trigger** — the **prod** URL is served for the released + activated version. Dev tests use the **dev** URL from `run_scenario_once` with `async: true`.
+- **Schedule (cron)** — runs on the schedule only after the version is released to prod **and** the scenario is Active.
 
-When to activate:
+When to release / activate:
 
-- New scenario, webhook/MCP trigger: activate after finish + test (still mention it in chat).
-- New scenario, app trigger / schedule: warn first — activation starts live listening or cron.
-- Edited existing scenario via `update_scenario`: always warn before activating — prod may already be in use.
+- New scenario, webhook/MCP trigger: after finish + test, `release_scenario` then `activate_scenario` (still mention it in chat).
+- New scenario, app trigger / schedule: warn first — this starts live listening or cron.
+- Edited existing scenario via `patch_scenario` / `update_scenario`: always warn before release/activate — prod may already be in use.
 
-There is no separate approval tool on this MCP set. Confirm in chat before `activate_scenario` — **Confirm before writes**.
+There is no separate approval tool on this MCP set. Confirm in chat before `release_scenario` and `activate_scenario` — **Confirm before writes**.
 
 ---
 
@@ -632,7 +705,9 @@ There is no separate approval tool on this MCP set. Confirm in chat before `acti
 Do **not** call a write, overwrite, delete, activate, or side-effect run until the user confirms in chat. That includes:
 
 - `create_scenario`
+- `patch_scenario` (partial graph edits)
 - `update_scenario` (replaces the whole graph; omitting a node **deletes** it)
+- `release_scenario` (deploys a version to production)
 - `activate_scenario` / deactivate
 - `create_connection` / `reauthenticate_connection`
 - `run_scenario_once`, `run_node_once`, `run_action_node_once` when the run sends mail, posts to chat, writes a CRM/sheet/DB, charges PnP credits on a paid model, or otherwise changes an external system

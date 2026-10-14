@@ -25,7 +25,7 @@ Control the runtime with the `use_bun` parameter:
 - Server creation (`Bun.serve`) and listening on ports are not supported.
   Neither runtime supports TypeScript/JSX syntax — write plain JavaScript only (no type annotations, interfaces, or generics).
 #### Runtime facts & limits
-- **`run()` argument object.** The injected argument object exposes `{ execution_id, data, store, db }`. You normally only need `data`; destructure the others when required. `data` is **not** automatically populated with every previous node output. Declared `@CustomParams` are available by key (strings, numbers, connections — **never a file**). An upstream **file** is only available via a hardcoded accessor in the source, for example `data["{{$3.result.fileInfo.content}}"]`. There is no CustomParams type that can take file content.
+- **`run()` argument object.** The injected argument object exposes `{ execution_id, data, store, db }`. You normally only need `data`; destructure the others when required. `data` is **not** automatically populated with every previous node output. Declared `@CustomParams` are available by key (strings, numbers, connections — **never a file**). An upstream **file** is only available via a hardcoded accessor in the source, for example `data["{{$image_0.result.fileInfo.content}}"]`. There is no CustomParams type that can take file content.
 - **Variables via `store`** (all calls are `async`; values become available to other nodes after the JS node runs once):
 - Scenario-local (string values only, scoped to the current scenario):
 ```javascript
@@ -165,7 +165,7 @@ When a **JavaScript** node returns `file: file("name.csv")`, the next JS node re
 // then data.image_file = "{{$3.result.fileInfo.content}}"  — this will break
 ```
 
-**Mandatory sequence when you also need to return a new file to downstream nodes:** read via `data["{{$N....content}}"]` → bytes (`Buffer.from(..., "latin1")` **or** `fs.readFileSync` if the accessor is a temp path) → modify → `fs.writeFileSync` → return `file(...)` / `files(...)` at the first level only.
+**Mandatory sequence when you also need to return a new file to downstream nodes:** read via `data["{{$image_0....content}}"]` (or `data["{{$3....content}}"]`) → bytes (`Buffer.from(..., "latin1")` **or** `fs.readFileSync` if the accessor is a temp path) → modify → `fs.writeFileSync` → return `file(...)` / `files(...)` at the first level only.
 
 Official Handling Files example (temp path + CSV transform + `file()`). Same rule: accessor hardcoded in source, never a custom parameter:
 
@@ -236,7 +236,7 @@ Do **not** declare a custom parameter for a file. There is no CustomParams type 
 Important: `@CustomParams` is usually at the top of the code. A live Gmail+attachment example used `import` first, then `@CustomParams`, then the rest, and ran successfully.
 ##### JS code writing strategy
 - First, write the JS code and describe your custom parameters schema inside your code.
-- Then set the code parameter's value directly in the node's `parameters` object via `create_scenario` (new scenario) or `update_scenario` (existing scenario).
+- Then set the code parameter's value directly in the node's `parameters` object via `create_scenario` (new scenario) or `patch_scenario` / `update_scenario` (existing scenario). Prefer `patch_scenario` `updateNodeParameters` for an existing JS node.
 - Confirm the parameter's exact key and current schema via the `params` array returned by `search_node_types` for this node's alias.
 - Fill custom parameter values as usual parameter values.
   Remember: when you change the `@CustomParams` schema you will be provided with a new parameters schema and values based on the new schema.
@@ -368,7 +368,7 @@ message: error.response?.data || error.message
     }
 }
 ```
-Build it using the JS code writing strategy above (write code with its `@CustomParams` schema → set it in the node's `parameters` via `create_scenario`/`update_scenario` → confirm the schema via `search_node_types`).
+Build it using the JS code writing strategy above (write code with its `@CustomParams` schema → set it in the node's `parameters` via `create_scenario`/`patch_scenario`/`update_scenario` → confirm the schema via `search_node_types`).
 #### Errors & debugging
 - Use `console.log` for debugging — output appears in the node's Log tab. Never log secrets.
 - For control flow: `throw` on unrecoverable errors, or return a structured error object (`{ status: "error", message }`) when the workflow should continue and inspect the error downstream.

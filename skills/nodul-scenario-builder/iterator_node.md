@@ -24,7 +24,7 @@ Both connectors can be saved through MCP.
 | Same save: cycle body **and** a right-side post-loop node | Works — cycle stays in `parameters.nodes`; post-loop has `prevNodes` on the Iterator |
 | Later separate save: add a right-side post-loop node | Works — `parameters.nodes` is kept |
 
-On `update_scenario` / `create_scenario`, cycle templates are only `{{$2.value}}` (digits after `$`). Never `{{$iterator_0.value}}` — that is not platform syntax. `get_scenario` may *show* a name; convert it to `$N` before writing.
+On `create_scenario` / `patch_scenario` / `update_scenario`, cycle templates use `$` + node name as `get_scenario` returns (`{{$iterator_0.value}}`) or a canvas number (`{{$2.value}}`). Both work.
 
 - `data` is a string containing JSON or a runtime expression that resolves to an array/object.
 - Arrays iterate over values; objects iterate over key-value pairs.
@@ -46,7 +46,7 @@ Cycle nodes are **not nested objects** inside `Iterator.parameters.nodes`.
 
 3. A cycle-root node uses empty `prevNodes`.
 4. Later nodes in the same cycle chain remain top-level and reference preceding cycle-node names through `prevNodes`.
-5. A post-loop node is also top-level and references the Iterator through `prevNodes`. That is the **right** connector. It may be in the same `create_scenario` / `update_scenario` as the cycle body.
+5. A post-loop node is also top-level and references the Iterator through `prevNodes`. That is the **right** connector. It may be in the same `create_scenario` / `patch_scenario` / `update_scenario` as the cycle body.
 6. Multiple cycle roots are represented by multiple names in `parameters.nodes`.
 
 `name` values are structural identifiers used by `prevNodes` and `parameters.nodes`. They are **not** runtime data references.
@@ -57,19 +57,15 @@ Cycle nodes are **not nested objects** inside `Iterator.parameters.nodes`.
 2. `get_scenario`: a real cycle keeps `parameters.nodes`. Cycle roots still have empty `prevNodes` (they must not point at the Iterator). Post-loop nodes **do** point at the Iterator.
 3. `run_scenario_once`: `executedNodesCount` for the cycle node equals the item count; each post-loop node runs once.
 
-`get_scenario` may **display** `{{$2.value}}` as `{{$iterator_0.value}}`. Do not write that back. Always send `{{$N.value}}`. Never send a cycle-root `prevNodes` pointing at the Iterator — that is the right connector, not the cycle.
+`get_scenario` returns cycle templates as `$` + node name (`{{$iterator_0.value}}`). Write that form, or a canvas number (`{{$2.value}}`). Never send a cycle-root `prevNodes` pointing at the Iterator — that is the right connector, not the cycle.
 
 #### Runtime data paths
 
-Runtime expressions always reference the upstream node's **number**, never its `name`.
+If the Iterator is named `iterator_0` (canvas node 2), both of these work:
 
-If the Iterator is node 2:
-
-- Current index: `{{$2.index}}`
-- Current value: `{{$2.value}}`
-- Nested value: `{{$2.value.id}}`
-
-Never write `{{$iterator_0.value}}`. `$` + node name is invalid. Use `{{$2.value}}` when the Iterator is canvas node 2.
+- Current index: `{{$iterator_0.index}}` or `{{$2.index}}`
+- Current value: `{{$iterator_0.value}}` or `{{$2.value}}`
+- Nested value: `{{$iterator_0.value.id}}`
 
 If `data` comes from node 1:
 

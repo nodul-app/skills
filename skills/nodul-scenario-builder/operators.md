@@ -28,21 +28,21 @@ Quick "can operators do this?" checklist:
 | `space`     | string    | a single space character `" "`      |
 ### Data access syntax
 
-These are the **only** prefixes for variables. `$` is always a **canvas node number** (`$1`, `$2`), never a node name.
+These are the **only** prefixes. They look different on purpose.
 
 | Prefix | Meaning | Write this | Never this |
 |---|---|---|---|
-| `$N` | Node output | `{{$1.data}}` | `{{$iterator_0.value}}` |
-| `_` | Scenario / exec variables | `{{_.data}}` | |
-| `%` | Global variables | `{{%.data}}` | |
+| `$` + node | Node output (name or canvas number) | `{{$VarsA.plain_text}}`, `{{$1.data}}` | `{{$_.data}}` |
+| `_` | Scenario / exec (local) variables | `{{_.data}}` | `{{$_.data}}` |
+| `%` | Global variables | `{{%.data}}` | `{{$%.data}}` |
 
-Rare exception: `{{1.data}}` without `$`. `get_scenario` may *display* `$iterator_0`; convert to `$N` before any write.
+`get_scenario` returns `$` + node **name** (`{{$WebhookTrigger.body}}`, `{{$iterator_0.value}}`). Write that form. Canvas numbers (`{{$2.value}}`) also work. Rare exception: `{{1.data}}` without `$`. Do **not** rewrite `_` or `%`.
 
-Connection field access uses `#connId` (not a node variable). User-file access uses `^`. Neither replaces `$N`.
+Connection field access uses `#connId` (not a node variable). User-file access uses `^`. Neither replaces `$` node refs.
 
 | Prefix | Description |
 |---|---|
-| ``$N.`field` `` | Node output (e.g. ``$1.`body`.`id` ``) |
+| ``$Name.`field` `` or ``$N.`field` `` | Node output (e.g. ``$WebhookTrigger.`body`.`id` ``) |
 | ``_.`field` `` | Execution context variables |
 | ``%.`field` `` | Global variables |
 | ``#connId.`field` `` | Connection data |

@@ -185,7 +185,7 @@ url = "<url>"
 Provide the same kind of snippet for any other client the user mentions (VS Code, Windsurf, etc.).
 
 #### Deployment
-When the work on the MCP server is finished, the scenario must be activated via `activate_scenario` — only after activation does the MCP server become available at the **production URL**. Until then the user's MCP clients cannot reach it.
+When the work on the MCP server is finished, `release_scenario` the tested version, then `activate_scenario` — only after release + activation does the MCP server become available at the **production URL**. Until then the user's MCP clients cannot reach it.
 - If the scenario was **empty** when you started (you built the MCP server from scratch): call `activate_scenario` right away — nothing was live before, and nothing runs until a client calls the URL. You may still mention in chat what you are about to activate, but a blocking approval step is not required for a from-scratch build.
 - If you **edited an existing scenario**: mention in chat that you are about to activate your changes and give the user a chance to object first, since activation replaces the currently live version and may affect functionality already in use by real MCP clients. This is a text-level courtesy, not a hard tool gate — there is no dedicated approval tool in this toolset.
 

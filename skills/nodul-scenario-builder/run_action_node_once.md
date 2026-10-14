@@ -14,7 +14,7 @@ The public [MCP Tools Reference](https://docs.nodul.ru/mcp-server/tools) may tem
 | User intent | Use |
 |---|---|
 | One-off: send a Slack message, add a sheet row, create a calendar event, look something up | **`run_action_node_once`** (this skill) |
-| Recurring / triggered automation, multi-step graph, webhook/MCP/schedule | **`create_scenario`** + scenario tools (see `SKILL.md`) |
+| Recurring / triggered automation, multi-step graph, webhook/MCP/schedule | **`create_scenario`** + scenario tools (`patch_scenario`, `update_scenario`, `release_scenario`, … — see `SKILL.md`) |
 | Debug one step of an **existing** scenario | **`run_node_once`** (needs `scenarioId` + `nodeName`) — not this tool |
 
 Do **not** create a scenario only to run a single action once. Prefer `run_action_node_once`.

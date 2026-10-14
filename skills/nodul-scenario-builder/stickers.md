@@ -9,7 +9,7 @@ One **overview note** on the canvas. It helps the user see what the scenario is.
 
 `typeAlias`: `sticker`. `search_node_types` does not list it — use it anyway.
 
-Add it on the **last** `create_scenario` / `update_scenario` of this scenario — when the graph is already what the user will keep. One write: existing nodes unchanged + this sticker object (or edit `content` if the sticker is already there). Do not rewrite JS, templates, or connections because of the note.
+Add it when the graph is already what the user will keep. Prefer `patch_scenario` `addNode` (or `updateNodeParameters` on `content` if the sticker exists). Do not resend the whole graph through `update_scenario` just to add a note. Do not rewrite JS, templates, or connections because of the note.
 
 The editor always drops the sticker **under** the graph, whether it was in the first create or a later update. That is fine. Do not try to put it on the left.
 
@@ -28,7 +28,7 @@ The editor always drops the sticker **under** the graph, whether it was in the f
 
 `prevNodes` is always `{}`. Do not add extra stickers next to nodes (no coordinates). Important notes go in the red box.
 
-To **remove** a sticker from the canvas: omit that node from `update_scenario`. There is no delete-sticker tool and no delete-scenario tool.
+To **remove** a sticker from the canvas: `patch_scenario` `removeNode` (or omit that node from a full `update_scenario`). There is no delete-scenario tool.
 
 ## What to write (this order)
 
