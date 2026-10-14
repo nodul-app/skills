@@ -9,7 +9,7 @@ One **overview note** on the canvas. It helps the user see what the scenario is.
 
 `typeAlias`: `sticker`. `search_node_types` does not list it — use it anyway.
 
-Add it when the graph is already what the user will keep. Prefer `patch_scenario` `addNode` (or `updateNodeParameters` on `content` if the sticker exists). Do not resend the whole graph through `update_scenario` just to add a note. Do not rewrite JS, templates, or connections because of the note.
+Add it when the graph is already what the user will keep. Prefer `patch_scenario` `addNode` (or `updateNodeParameters` on `content` if the sticker exists). Do not resend the whole graph through `update_scenario` just to add a note. The note is not a reason to redesign routes or JS. `addNode` can still retarget templates on other nodes; after it, `get_scenario` and write those parameters back to `$` + the producer they should read.
 
 The editor always drops the sticker **under** the graph, whether it was in the first create or a later update. That is fine. Do not try to put it on the left.
 

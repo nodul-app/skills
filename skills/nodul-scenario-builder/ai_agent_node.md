@@ -179,7 +179,7 @@ Stage 2 sends the same two-node graph through `update_scenario`, with:
   "system_message": "Always call the available tool before answering.",
   "context_window_length": 25,
   "max_iterations": 3,
-  "temperature": "0",
+  "temperature": "0.3",
   "tools": [
     {
       "name": "HTTP Tool",
