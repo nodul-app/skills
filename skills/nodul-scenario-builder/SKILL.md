@@ -529,7 +529,7 @@ For each edge you may set a `condition`. With no condition, the edge always runs
       "name": "GetValuesInSheet",
       "typeAlias": "__pd_google_sheets_get_values",
       "parameters": {
-        "access_token": "{{connection.YOUR_GOOGLE_SHEETS_CONNECTION_ID}}",
+        "access_token": "<CONNECTION_ID>",
         "sheetId": "1YjtKgsUAxuTFhRmNxFHr9_U8qDWIa3v2KSj0lC5WPuw",
         "sheetName": "Sheet1"
       },
@@ -543,7 +543,7 @@ For each edge you may set a `condition`. With no condition, the edge always runs
       "name": "GetAnotherValuesInSheet",
       "typeAlias": "__pd_google_sheets_get_values",
       "parameters": {
-        "access_token": "{{connection.YOUR_GOOGLE_SHEETS_CONNECTION_ID}}",
+        "access_token": "<CONNECTION_ID>",
         "sheetId": "1YjtKgsUAxuTFhRmNxFHr9_U8qDWIa3v2KSj0lC5WPuw",
         "sheetName": "Sheet1"
       },
@@ -568,6 +568,8 @@ For each edge you may set a `condition`. With no condition, the edge always runs
   ]
 }
 ```
+
+`<CONNECTION_ID>` is the bare `id` returned by `search_connections` (or `connectionId` from `create_connection`), with no `{{ }}` around it. See **[Connections](connections.md)** → "Referencing a connection".
 
 ## Nodes that do not exist
 

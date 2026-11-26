@@ -60,6 +60,36 @@ Do NOT ask the user to choose between available credentials — make the choice 
 
 When composing a scenario, note which apps are involved. Each distinct app needs at least one connection. Multiple modules from the same app typically share a connection.
 
+## Referencing a connection
+
+There are exactly two valid forms. Which one to use depends on the field.
+
+**1. Connection field of a node (parameter of type `connection`, usually `access_token`): bare ID only.**
+
+Applies to `create_scenario`, `patch_scenario` (`addNode`, `replaceNode`, `updateNodeParameters`), `run_action_node_once`, and `get_dynamic_node_parameters`.
+
+```json
+"access_token": "<CONNECTION_ID>"
+```
+
+- `<CONNECTION_ID>` is the `id` from `search_connections` or the `connectionId` from `create_connection`.
+- No `{{ }}`, no prefix, no template of any kind. `{{connection.<CONNECTION_ID>}}`, `{{#<CONNECTION_ID>}}`, and a variable or node output such as `{{$Vars.conn}}` are all rejected.
+- In `run_action_node_once` and `get_dynamic_node_parameters` the server wraps the value in `{{#...}}` itself, so a template there turns into `{{#{{connection.<CONNECTION_ID>}}` and fails with `Unexpected symbol: #`.
+- A connection cannot be picked dynamically (from a variable or from another node's output). Set the bare ID at build time.
+
+**2. Connection data inside a text field (HTTP header or body, any string parameter, JS source): `{{#<CONNECTION_ID>.<field>}}`.**
+
+```json
+"Authorization": "Bearer {{#<CONNECTION_ID>.access_token}}"
+```
+
+- The auth prefix depends on the service: Google and amoCRM use `Bearer`, Yandex uses `OAuth`. Check the service's API docs.
+- For JS nodes, see **[JS Code Node](js_code_node.md)** → CONNECTION.
+
+**`{{connection...}}` does not work anywhere.** In a connection field it is rejected at build time. In a text field (`{{connection.<CONNECTION_ID>.access_token}}`) `patch_scenario` accepts it, but the node fails at run time with `Unexpected symbol: c`.
+
+**Error signal.** A wrong value in a connection field makes `create_scenario` / `patch_scenario` return only the uninformative `Unknown error while executing tool`, and the whole patch is not applied. When you see that error on a node with a connection, check the connection value first.
+
 ## Searching connections: `search_connections`
 
 Use the live parameter name:
@@ -88,7 +118,7 @@ Use this tool only when `search_connections` found no usable existing connection
 
 | Field | Description |
 |---|---|
-| `connectionId` | ID of the created connection — use it in the node's connection-type parameter (often `access_token`; confirm the exact key via `search_node_types`) |
+| `connectionId` | ID of the created connection — use it as a bare value (no `{{ }}`) in the node's connection-type parameter (often `access_token`; confirm the exact key via `search_node_types`) |
 | `url` | Authorization URL, returned for OAuth-based services when the client does not support elicitation |
 
 **Behavior notes**:

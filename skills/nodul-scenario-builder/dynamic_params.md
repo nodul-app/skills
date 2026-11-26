@@ -9,7 +9,7 @@ description: Load before calling get_dynamic_node_parameters or when a node para
 
 1. Read the node's `params` from `search_node_types`.
 2. If it has a connection parameter, call `search_connections` with `connectionTypeAlias`.
-3. Add the selected connection ID to `currentParameters`.
+3. Add the selected connection ID to `currentParameters` as a bare value (`"access_token": "<connectionId>"`). No `{{ }}`: the server wraps it in `{{#...}}` itself, and a template fails with `Unexpected symbol: #`.
 4. Call `get_dynamic_node_parameters` with `nodeTypeAlias` and the **complete** `currentParameters`.
 5. Select required option keys, add them to the same object, and call again.
 6. Continue until no newly returned field requires another dynamic selection.

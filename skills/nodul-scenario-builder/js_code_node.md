@@ -25,7 +25,7 @@ Control the runtime with the `use_bun` parameter:
 - Server creation (`Bun.serve`) and listening on ports are not supported.
   Neither runtime supports TypeScript/JSX syntax — write plain JavaScript only (no type annotations, interfaces, or generics).
 #### Runtime facts & limits
-- **`run()` argument object.** The injected argument object exposes `{ execution_id, data, store, db }`. You normally only need `data`; destructure the others when required. `data` is **not** automatically populated with every previous node output. Declared `@CustomParams` are available by key (strings, numbers, connections — **never a file**). An upstream **file** is only available via a hardcoded accessor in the source, for example `data["{{$image_0.result.fileInfo.content}}"]`. There is no CustomParams type that can take file content.
+- **`run()` argument object.** The injected argument object exposes `{ execution_id, data, store, db }`. You normally only need `data`; destructure the others when required. `data` is **not** automatically populated with every previous node output. Declared `@CustomParams` are available by key (strings, numbers, connections — **never a file**; a `connection` value arrives as a JSON string, see CONNECTION below). An upstream **file** is only available via a hardcoded accessor in the source, for example `data["{{$image_0.result.fileInfo.content}}"]`. There is no CustomParams type that can take file content.
 - **Variables via `store`** (all calls are `async`; values become available to other nodes after the JS node runs once):
 - Scenario-local (string values only, scoped to the current scenario):
 ```javascript
@@ -250,7 +250,18 @@ For API tokens, keys, authorization data (object with an `access_token` or `api_
 "description": "Provide API credentials"
 }
 ```
-Usage: `data.api_connection.access_token` or `data.api_connection.api_key`.
+Value: the bare connection ID from `search_connections` (`"api_connection": "<CONNECTION_ID>"`), never `{{connection.<CONNECTION_ID>}}` or `{{#<CONNECTION_ID>}}` (those return `Unknown error while executing tool` and the patch is not applied). See **[Connections](connections.md)** → "Referencing a connection".
+
+Usage: the parameter arrives in `data` as a **JSON string**, not an object. `data.api_connection.access_token` is `undefined`. Parse it first:
+```javascript
+const conn = JSON.parse(data.api_connection);
+const token = conn.access_token;
+```
+The parsed object holds the connection fields (for OAuth connections: `access_token`, `code_verifier`, `meta_data`).
+
+Alternatives without a `connection` custom parameter:
+- Hardcode the accessor in the source: `const token = data["{{#<CONNECTION_ID>.access_token}}"];` (same pattern as file accessors).
+- Declare a `string` custom parameter and set its value to `{{#<CONNECTION_ID>.access_token}}`; the code then reads `data.<param>` directly.
 ##### STRING
 Text input, optionally with a minimum length:
 ```json
@@ -349,11 +360,12 @@ A single JS node that calls an API using an injected connection and returns pars
 import axios from "axios";
 export default async function run({ data }) {
 try {
+const conn = JSON.parse(data.api_connection);
 const response = await axios({
 method: "GET",
 url: `https://api.example.com/users/${data.user_id}`,
 headers: {
-Authorization: `Bearer ${data.api_connection.access_token}`
+Authorization: `Bearer ${conn.access_token}`
             }
         });
 return {

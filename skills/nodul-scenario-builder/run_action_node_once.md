@@ -58,6 +58,7 @@ Do **not** create a scenario only to run a single action once. Prefer `run_actio
 1. **Find the action** — call `search_node_types` with a focused string `query`, select an app, then call it with `app`. Read `alias`, `params`, and descriptions. Never invent a `nodeTypeAlias`. Core nodes (`set_variables`, `js_code`, …) go to step 4 after filling params. Service actions (Gmail, LinkedIn, Sheets, …) go through auth and cascade first.
 2. **Authorization first** (if the node has a connection / `access_token` / similar field):
    - Call `search_connections` with `connectionTypeAlias`.
+   - Put the bare connection ID in the connection field (`"access_token": "<connectionId>"`), no `{{ }}`. The server wraps it in `{{#...}}` itself; a template fails with `Unexpected symbol: #`. See `connections.md` → "Referencing a connection".
    - Prefer an existing connection (newest first if trying several). If one fails after `access_token` is set, try the others in that same newest-first order.
    - If none work or none exist — call `create_connection`, surface any returned `url` to the user for OAuth, wait until they confirm, then continue.
 3. **Cascade parameters** — set what you know, then call `get_dynamic_node_parameters` with `nodeTypeAlias` + `currentParameters`. Repeat until no further dependent fields remain. See `dynamic_params.md`.
